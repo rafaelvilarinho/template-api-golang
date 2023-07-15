@@ -1,0 +1,43 @@
+name: API Deployment - Prod
+
+on:
+  push:
+    branches:
+      - main_ # remove '_' to use
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Building Project
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Publishing container
+        run: |
+          echo "${{secrets.TEMPLATE_KEY}}" > ./server-key.pem
+          chmod 400 ./server-key.pem
+          eval $(ssh-agent)
+          ssh-add -k ./server-key.pem
+          mkdir -p ~/.ssh && echo "Host *" > ~/.ssh/config && echo " StrictHostKeyChecking no" >> ~/.ssh/config
+
+          export DOCKER_HOST="ssh://ubuntu@${{secrets.TEMPLATE_SERVER}}"
+
+          echo "PORT=8001" >> .env
+          echo "WEBSITE_URL=https://template.com.br" >> .env
+          echo "MONGODB_URI=mongodb://localhost:27017" >> .env
+          echo "CRYPT_SECRET=\"${{secrets.CRYPT_SECRET}}\"" >> .env
+          echo "JWT_SECRET=\"${{secrets.JWT_SECRET}}\"" >> .env
+          echo "SENDGRID_API_KEY=\"${{secrets.SENDGRID_API_KEY}}\"" >> .env
+          echo "MAIL_USER_NAME=\"${{secrets.MAIL_USER_NAME}}\"" >> .env
+          echo "MAIL_USER_EMAIL=\"${{secrets.MAIL_USER_EMAIL}}\"" >> .env
+
+          docker image build -t template-api:latest -f Dockerfile .
+
+          docker container stop template-api || echo "template-api's container not running"
+          docker container rm template-api || echo "template-api's container not exists"
+          docker run -d --name template-api --restart unless-stopped --network host template-api:latest
+
+          docker system prune -a -f
