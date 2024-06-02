@@ -1,0 +1,91 @@
+name: Docker Image Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      CONTAINER_REGISTRY_URL:
+        description: "Container Registry URL"
+        type: string
+        required: true
+      SERVER_HOSTNAME:
+        description: "Server Hostname"
+        type: string
+        required: true
+      ENVIRONMENT:
+        description: "Environment"
+        default: dev
+        type: choice
+        options:
+          - dev
+          - prd
+
+  workflow_call:
+    inputs:
+      CONTAINER_REGISTRY_URL:
+        type: string
+        required: true
+      SERVER_HOSTNAME:
+        type: string
+        required: true
+      ENVIRONMENT:
+        type: string
+        
+    secrets:
+      CONTAINER_REGISTRY_USER:
+        required: true
+      CONTAINER_REGISTRY_PWD:
+        required: true
+
+jobs:
+  main:
+    name: Deploy on ${{inputs.ENVIRONMENT}}
+    runs-on: ubuntu-latest
+    env: 
+      COMMIT_ID: "${{github.sha}}"
+      CONTAINER_REGISTRY_URL: "${{inputs.CONTAINER_REGISTRY_URL}}"
+      ENVIRONMENT: "${{inputs.ENVIRONMENT}}"
+  
+    steps:
+      - name: Publishing container
+        run: |
+          APP_NAME="template-api"
+
+          if [ "$ENVIRONMENT" == "dev" ]
+          then
+            echo "Creating DEV ssh key"
+            echo "${{secrets.SERVER_KEY_DEV}}" > ./server-key.pem
+          elif [ "$ENVIRONMENT" == "prd" ]
+          then
+            echo "Creating PRD ssh key"
+            echo "${{secrets.SERVER_KEY_PRD}}" > ./server-key.pem
+          else
+            echo "Invalid environment selected: $ENVIRONMENT"
+            exit 1
+          fi
+          
+          chmod 400 ./server-key.pem
+          eval $(ssh-agent)
+          ssh-add -k ./server-key.pem
+          mkdir -p ~/.ssh && echo "Host *" > ~/.ssh/config && echo " StrictHostKeyChecking no" >> ~/.ssh/config
+
+          if [ "$ENVIRONMENT" == "dev" ]
+          then
+            echo "Connecting on Docker (DEV)"
+            export DOCKER_HOST="ssh://ravitecnologia@${{vars.SERVER_HOSTNAME_DEV}}"
+          elif [ "$ENVIRONMENT" == "prd" ]
+          then
+            echo "Connecting on Docker (PRD)"
+            export DOCKER_HOST="ssh://ravitecnologia@${{vars.SERVER_HOSTNAME_PRD}}"
+          else 
+            echo "Invalid environment selected: $ENVIRONMENT"
+            exit 1
+          fi
+
+          docker login -u "${{secrets.CONTAINER_REGISTRY_USER}}" -p "${{secrets.CONTAINER_REGISTRY_PWD}}" "$CONTAINER_REGISTRY_URL"
+
+          docker container stop $APP_NAME || echo "$APP_NAME's container not running"
+          docker container rm $APP_NAME || echo "$APP_NAME's container not exists"
+          docker run -d --name $APP_NAME --restart always --network host $APP_NAME:$ENVIRONMENT
+
+          docker system prune -a -f
+          

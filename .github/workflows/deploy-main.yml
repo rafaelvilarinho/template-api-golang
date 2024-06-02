@@ -1,43 +1,47 @@
-name: API Deployment - Prod
+name: CI - Prodution
 
 on:
-  push:
-    branches:
-      - main_ # remove '_' to use
-
   workflow_dispatch:
+    inputs:
+      reason:
+        type: string
+        required: true
+
+  pull_request_target:
+    types:
+      - closed
+    branches:
+      - main
 
 jobs:
-  build:
-    name: Building Project
-    runs-on: ubuntu-latest
+  build-image:
+    name: "Docker Image Build"
+    if: github.event.pull_request.merged == true || inputs.reason != ''
+    uses: ./.github/workflows/build-image.yml
+    with:
+      CONTAINER_REGISTRY_URL: "${{vars.CONTAINER_REGISTRY_URL}}"
+      PORT: "${{vars.PORT_PRD}}"
+      DATABASE_NAME: "${{vars.DATABASE_NAME_PRD}}"
+      MAIL_USER_NAME: "${{vars.MAIL_USER_NAME_PRD}}"
+      MAIL_USER_EMAIL: "${{vars.MAIL_USER_EMAIL_PRD}}"
+      AZURE_STORAGE_NAME: "${{vars.AZURE_STORAGE_NAME_PRD}}"
+      AWS_BUCKET_NAME: "${{vars.AWS_BUCKET_NAME_PRD}}"
+      WEBSITE_URL: "${{vars.WEBSITE_URL_PRD}}"
+      ENVIRONMENT: "prd"
+    secrets: 
+      CONTAINER_REGISTRY_USER: "${{secrets.CONTAINER_REGISTRY_USER}}"
+      CONTAINER_REGISTRY_PWD: "${{secrets.CONTAINER_REGISTRY_PWD}}"
+      AZURE_STORAGE_ACCESS_KEY: "${{secrets.AZURE_STORAGE_ACCESS_KEY_PRD}}"
+      DATABASE_URI: "${{secrets.DATABASE_URI_PRD}}"
 
-    steps:
-      - uses: actions/checkout@v1
-
-      - name: Publishing container
-        run: |
-          echo "${{secrets.TEMPLATE_KEY}}" > ./server-key.pem
-          chmod 400 ./server-key.pem
-          eval $(ssh-agent)
-          ssh-add -k ./server-key.pem
-          mkdir -p ~/.ssh && echo "Host *" > ~/.ssh/config && echo " StrictHostKeyChecking no" >> ~/.ssh/config
-
-          export DOCKER_HOST="ssh://ubuntu@${{secrets.TEMPLATE_SERVER}}"
-
-          echo "PORT=8001" >> .env
-          echo "WEBSITE_URL=https://template.com.br" >> .env
-          echo "MONGODB_URI=mongodb://localhost:27017" >> .env
-          echo "CRYPT_SECRET=\"${{secrets.CRYPT_SECRET}}\"" >> .env
-          echo "JWT_SECRET=\"${{secrets.JWT_SECRET}}\"" >> .env
-          echo "SENDGRID_API_KEY=\"${{secrets.SENDGRID_API_KEY}}\"" >> .env
-          echo "MAIL_USER_NAME=\"${{secrets.MAIL_USER_NAME}}\"" >> .env
-          echo "MAIL_USER_EMAIL=\"${{secrets.MAIL_USER_EMAIL}}\"" >> .env
-
-          docker image build -t template-api:latest -f Dockerfile .
-
-          docker container stop template-api || echo "template-api's container not running"
-          docker container rm template-api || echo "template-api's container not exists"
-          docker run -d --name template-api --restart unless-stopped --network host template-api:latest
-
-          docker system prune -a -f
+  deploy:
+    name: "Deploy on Production"
+    uses: ./.github/workflows/deploy-image.yml
+    needs: build-image
+    with:
+      CONTAINER_REGISTRY_URL: "${{vars.CONTAINER_REGISTRY_URL}}"
+      SERVER_HOSTNAME: "${{vars.SERVER_HOSTNAME_PRD}}"
+      ENVIRONMENT: "prd"
+    secrets: 
+      CONTAINER_REGISTRY_USER: "${{secrets.CONTAINER_REGISTRY_USER}}"
+      CONTAINER_REGISTRY_PWD: "${{secrets.CONTAINER_REGISTRY_PWD}}"

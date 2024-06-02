@@ -109,7 +109,7 @@ func GenerateUserToken(user *types.UserDTO) (string, error) {
 		environment, _ := helpers.GetEnvironment()
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 			"id":        user.Id.Hex(),
-			"level":     user.Level,
+			"type":      user.Type,
 			"firstName": user.FirstName,
 			"lastName":  user.LastName,
 			"email":     user.Email,

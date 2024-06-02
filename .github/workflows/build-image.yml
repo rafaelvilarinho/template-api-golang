@@ -1,0 +1,96 @@
+name: Docker Image Build
+
+on:
+  workflow_call:
+    inputs:
+      CONTAINER_REGISTRY_URL:
+        type: string
+        required: true
+      PORT:
+        type: string
+        required: true
+      DATABASE_NAME:
+        type: string
+        required: true
+      MAIL_USER_NAME:
+        type: string
+        required: true
+      MAIL_USER_EMAIL:
+        type: string
+        required: true
+      AZURE_STORAGE_NAME:
+        type: string
+        required: true
+      AWS_BUCKET_NAME:
+        type: string
+        required: true
+      WEBSITE_URL:
+        type: string
+        required: true
+      ENVIRONMENT:
+        type: string
+        
+    secrets:
+      CONTAINER_REGISTRY_USER:
+        required: true
+      CONTAINER_REGISTRY_PWD:
+        required: true
+      AZURE_STORAGE_ACCESS_KEY:
+        required: true
+      DATABASE_URI:
+        required: true
+
+jobs:
+  main:
+    name: Building Docker Image
+    runs-on: ubuntu-latest
+    env: 
+      COMMIT_ID: "${{github.sha}}"
+      CONTAINER_REGISTRY_URL: "${{inputs.CONTAINER_REGISTRY_URL}}"
+      PORT: "${{inputs.PORT}}"
+      WEBSITE_URL: "${{inputs.WEBSITE_URL}}"
+      DATABASE_URI: "${{secrets.DATABASE_URI}}"
+      DATABASE_NAME: "${{inputs.DATABASE_NAME}}"
+      MAIL_USER_NAME: "${{inputs.MAIL_USER_NAME}}"
+      MAIL_USER_EMAIL: "${{inputs.MAIL_USER_EMAIL}}"
+      AZURE_STORAGE_ACCESS_KEY: "${{secrets.AZURE_STORAGE_ACCESS_KEY}}"
+      AZURE_STORAGE_NAME: "${{inputs.AZURE_STORAGE_NAME}}"
+      AWS_BUCKET_NAME: "${{inputs.AWS_BUCKET_NAME}}"
+      ENVIRONMENT: "${{inputs.ENVIRONMENT}}"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21.6'
+
+      - name: 'Building and uploading image to Container Registry'
+        run: |
+          APP_NAME="template"
+          CR_IMAGE="$CONTAINER_REGISTRY_URL/$APP_NAME"
+          
+          echo "PORT=$PORT" > .env
+          echo "WEBSITE_URL=\"$WEBSITE_URL\"" >> .env
+          echo "MONGODB_URI=\"$DATABASE_URI\"" >> .env
+          echo "CRYPT_SECRET=\"$CRYPT_SECRET\"" >> .env
+          echo "JWT_SECRET=\"$JWT_SECRET\"" >> .env
+          echo "SENDGRID_API_KEY=\"$SENDGRID_API_KEY\"" >> .env
+          echo "MAIL_USER_NAME=\"$MAIL_USER_NAME\"" >> .env
+          echo "MAIL_USER_EMAIL=\"$MAIL_USER_EMAIL\"" >> .env
+          echo "AZURE_STORAGE_ACCESS_KEY=\"$AZURE_STORAGE_ACCESS_KEY\"" >> .env
+          echo "AZURE_STORAGE_NAME=\"$AZURE_STORAGE_NAME\"" >> .env
+          echo "AWS_BUCKET_NAME=\"$AWS_BUCKET_NAME\"" >> .env
+
+          docker build -t $APP_NAME:$COMMIT_ID ./
+
+          docker login -u "${{secrets.CONTAINER_REGISTRY_USER}}" -p "${{secrets.CONTAINER_REGISTRY_PWD}}" $CONTAINER_REGISTRY_URL
+
+          docker tag $APP_NAME:$COMMIT_ID $CR_IMAGE:$COMMIT_ID
+          docker push $CR_IMAGE:$COMMIT_ID
+          
+          if [ "$ENVIRONMENT" != "" ]; then
+            docker tag $APP_NAME:$COMMIT_ID $CR_IMAGE:$ENVIRONMENT
+            docker push $CR_IMAGE:$ENVIRONMENT
+          fi
+          

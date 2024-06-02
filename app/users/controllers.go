@@ -240,7 +240,7 @@ func (controller *UserController) Signin(context *gin.Context) {
 					FirstName:   user.FirstName,
 					LastName:    user.LastName,
 					Email:       user.Email,
-					Level:       user.Level,
+					Type:        user.Type,
 					AccessToken: accessToken,
 				},
 			})
