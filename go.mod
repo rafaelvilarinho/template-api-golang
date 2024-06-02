@@ -1,6 +1,6 @@
 module api.template.com.br
 
-go 1.20
+go 1.21.6
 
 require (
 	github.com/gin-gonic/gin v1.10.0
